@@ -19,53 +19,68 @@ public class MyExecuteService {
     //阻塞队列
     BlockingQueue<Runnable> queue = new ArrayBlockingQueue<>(1024);
 
-    Thread coreTask = new Thread(() -> {
-        while (true) {
-            try {
-                Runnable take = queue.take();
-                workerCount.getAndDecrement();
-                take.run();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+    public MyExecuteService(AtomicInteger workerCount, AtomicInteger supprotCount, Integer corePoolSize, Integer maximumPoolSize, Integer keepAliveTime, TimeUnit keepAliveTimeUnit, BlockingQueue<Runnable> queue) {
+        this.workerCount = workerCount;
+        this.supprotCount = supprotCount;
+        this.corePoolSize = corePoolSize;
+        this.maximumPoolSize = maximumPoolSize;
+        this.keepAliveTime = keepAliveTime;
+        this.keepAliveTimeUnit = keepAliveTimeUnit;
+        this.queue = queue;
+    }
 
-        }
-    });
 
-    Thread supportTask = new Thread(() -> {
-        while (true) {
-            try {
-                Runnable take = queue.poll(keepAliveTime, keepAliveTimeUnit);
-                if (take == null){
-                    break;
-                }
-                supprotCount.getAndDecrement();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-
-        }
-    });
 
 
     void execute(Runnable command) {
         Integer value = calculatedValue(workerCount,supprotCount);
 
         if (workerCount.get() <= corePoolSize) {
-            Thread thread = new Thread(coreTask);
+            Thread thread = new CoreTask();
             thread.start();
         }
         if (queue.offer(command)) {
             return;
         }
         if (queue.size() <= maximumPoolSize - corePoolSize) {
-            Thread thread = new Thread(supportTask);
+            Thread thread = new SupportTask();
             thread.start();
         }
         if (!queue.offer(command)) {
             throw new RuntimeException("队列满了");
         }
 
+    }
+    class CoreTask extends Thread {
+        public void run() {
+            while (true) {
+                try {
+                    Runnable take = queue.take();
+                    workerCount.getAndDecrement();
+                    take.run();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+
+            }
+        }
+    }
+
+    class SupportTask extends Thread {
+        public void run() {
+            while (true) {
+                try {
+                    Runnable take = queue.poll(keepAliveTime, keepAliveTimeUnit);
+                    if (take == null){
+                        break;
+                    }
+                    supprotCount.getAndDecrement();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+
+            }
+        }
     }
 
     private Integer calculatedValue(AtomicInteger workerCount, AtomicInteger supprotCount) {
